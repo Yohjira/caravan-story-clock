@@ -126,7 +126,6 @@
             min-width: 300px;
             margin: 10px 0;
         }
-        /* ★修正: 通知設定をアラーム設定と同じ幅にする */
         .notification-controls {
             padding: 20px;
             background-color: #444;
@@ -371,14 +370,14 @@
         let alarms = []; 
         let nextAlarmId = 1;
         let isAlarming = false;
-        let alarmInterval = null; 
-        
+        let alarmInterval = null; // 時計の更新間隔は常に稼働
+
         let audioCtx;
-        let activeOscillator = null; 
+        let activeOscillator = null; // アラーム音のsetTimeout ID
         let lastGameTotalSeconds = -1; 
         let currentlyRingingAlarmId = null; 
         let notificationEnabled = false; 
-        let savedSyncStatus = {}; // 同期ステータスを保持
+        let savedSyncStatus = {}; 
 
         // --- ヘルパー関数: HH:MM を総秒数に変換 ---
         function timeToSeconds(timeStr) {
@@ -430,30 +429,39 @@
             osc.stop(audioCtx.currentTime + duration);
         }
 
-        // ★★★ アラーム音を3回鳴らして自動停止する関数 ★★★
+        // ★★★ 修正: アラーム音を3回鳴らして自動停止する関数 (状態リセットも行う) ★★★
         function playAlarmPattern() {
             if (!audioCtx) return;
-            if (activeOscillator) return; 
+            // アラーム音が既に再生中であれば中断
+            if (activeOscillator) clearTimeout(activeOscillator); 
+            activeOscillator = null;
 
-            const maxRepeats = 3; // 3回鳴らす
-            const toneDuration = 100; // 0.1秒鳴らす (ミリ秒)
-            const interval = 500; // 0.5秒間隔 (ミリ秒)
+            const maxRepeats = 3; 
+            const toneDuration = 100; 
+            const interval = 500; 
             let currentRepeat = 0;
             
             function runPattern() {
                 if (currentRepeat < maxRepeats) {
                     playTone(880, 'square', toneDuration / 1000); 
                     currentRepeat++;
+                    // 次のトーンをスケジュール
                     activeOscillator = setTimeout(runPattern, interval);
                 } else {
                     activeOscillator = null; 
-                    // テスト時以外はstopAlarmSound()を呼び出し。今回はテストなので不要。
+                    
+                    // 3回鳴り終わったら、アラーム状態をリセット
+                    if (isAlarming) {
+                        isAlarming = false;
+                        updateStatusMessageNormal();
+                    }
                 }
             }
-            activeOscillator = setTimeout(runPattern, 0);
+            // パターン開始
+            runPattern();
         }
         
-        // ★★★ stopAlarmSound 関数 ★★★
+        // ★★★ 修正: stopAlarmSound 関数 (タイマー操作を削除) ★★★
         function stopAlarmSound() {
             // 1. 音を止め、アラーム状態を解除
             if (activeOscillator) {
@@ -461,15 +469,12 @@
                 activeOscillator = null;
             }
             isAlarming = false;
+            currentlyRingingAlarmId = null; 
             
-            // 3. ステータスを正常に戻す (アラーム発動中メッセージのみクリア)
+            // 2. ステータスを正常に戻す
             updateStatusMessageNormal();
-
-            // 4. タイマー再開を強制的に実行
-            if (alarmInterval === null) {
-                alarmInterval = setInterval(updateGameTime, 1000);
-                updateGameTime(); 
-            }
+            
+            // 3. 時計のタイマーは停止しないため、再起動処理は不要
         }
         
         // --- 初期化 ---
@@ -478,13 +483,15 @@
             loadSyncData();
             loadAlarmsData();
             loadNotificationSetting();
+            
+            // 常にタイマーを起動したままにする
             if (alarmInterval === null) {
                  alarmInterval = setInterval(updateGameTime, 1000); 
             }
             updateGameTime();
         }
 
-        // ★★★ 通知機能ロジック ★★★
+        // ★★★ 通知機能ロジック (省略) ★★★
         
         function loadNotificationSetting() {
             if (!("Notification" in window)) {
@@ -566,7 +573,7 @@
             if (notificationEnabled && Notification.permission === 'granted') {
                 const notification = new Notification(title, {
                     body: body,
-                    icon: 'https://example.com/icon.png', // 任意のアイコンURLに変更
+                    icon: 'https://example.com/icon.png', 
                     requireInteraction: true 
                 });
 
@@ -777,41 +784,27 @@
             }
         }
         
-        // ★★★ 修正箇所: testAlarmSoundからステータスメッセージ操作を削除 ★★★
+        // ★★★ 修正: testAlarmSound (タイマー操作なし) ★★★
         function testAlarmSound() {
-            // 1. タイマーを停止し、アラーム状態をリセット
-            if (alarmInterval !== null) {
-                clearInterval(alarmInterval);
-                alarmInterval = null;
-            }
-            if (isAlarming) stopAlarmSound();
-            
-            // 2. 3回鳴動させる本ロジックを呼び出す
-            playAlarmPattern(); 
-            
-            // 3. 通知もテスト
-            showDesktopNotification("アラームテスト", "アラーム音・通知機能が動作しています。");
+            // 既存のトーンパターンを停止
+            if (activeOscillator) clearTimeout(activeOscillator); 
+            activeOscillator = null;
 
-            // 4. テスト音の再生が完全に終わる時間（約1.5秒）を待って、時計を再開する
-            setTimeout(() => {
-                if (!isAlarming) {
-                    // ステータスメッセージ操作は行わない
-                    if (alarmInterval === null) {
-                        alarmInterval = setInterval(updateGameTime, 1000);
-                    }
-                }
-            }, 1500); 
+            // アラーム音を再生（この関数内で状態変更はしない）
+            playAlarmPattern(); 
+
+            // 通知もテスト
+            showDesktopNotification("アラームテスト", "アラーム音・通知機能が動作しています。");
+            
+            // 時計のタイマーは停止しないため、再起動処理も不要
         }
-        // ★★★ 修正箇所 終了 ★★★
         
+        // ★★★ 修正: triggerAlarm (タイマー停止処理を削除) ★★★
         function triggerAlarm(alarmObject) {
             isAlarming = true;
             currentlyRingingAlarmId = alarmObject.id; 
             
-            if (alarmInterval !== null) {
-                clearInterval(alarmInterval);
-                alarmInterval = null;
-            }
+            // 修正点: 時計の更新間隔（alarmInterval）を停止する処理を削除
 
             const statusElement = document.getElementById('statusMessage');
             statusElement.textContent = `🚨 アラーム発動中: ${alarmObject.targetTime} 🚨 (3回鳴ったら自動停止)`;
@@ -832,10 +825,10 @@
              statusElement.style.color = savedSyncStatus.color;
         }
 
-        // ★★★ updateGameTime 関数（連続鳴動防止ロジック） ★★★
+        // ★★★ updateGameTime 関数 (時計は常に動き続ける) ★★★
         function updateGameTime() {
-            if (isAlarming && alarmInterval === null) return;
-            
+            // alarmIntervalは常に稼働しているため、このチェックは不要
+
             const displayElement = document.getElementById('gameTimeDisplay');
             if (syncRealTimeMs === 0) {
                 displayElement.textContent = '--:--'; 
@@ -876,11 +869,9 @@
 
                     const alarmSeconds = alarm.seconds;
 
-                    // アラーム通過判定
                     const crossedCurrent = currentGameTotalSeconds >= alarmSeconds;
                     const crossedLast = lastGameTotalSeconds < alarmSeconds;
                     
-                    // 00:00をまたぐケース
                     const isMidnightCrossing = (alarmSeconds === 0) && (lastGameTotalSeconds > SECONDS_PER_DAY - 60) && (currentGameTotalSeconds === 0);
 
                     if ((crossedCurrent && crossedLast) || isMidnightCrossing) {
@@ -897,12 +888,12 @@
             
             if (currentlyRingingAlarmId !== null) {
                  const ringingAlarm = alarms.find(a => a.id === currentlyRingingAlarmId);
+                 // 警報が鳴った直後の次の秒に進んだら、再トリガーフラグをクリア
                  if (ringingAlarm && currentGameTotalSeconds > ringingAlarm.seconds) {
                     currentlyRingingAlarmId = null;
                  }
             }
         }
-        // ★★★ 修正箇所 終了 ★★★
         
         // グローバルスコープに公開
         window.startClock = startClock;
