@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>キャラスト ゲーム内時間</title>
+    
+    <style>
+        /* ★修正点: box-sizingとpaddingを追加し、モバイルでのレイアウト崩れを防ぐ */
+        * {
+            box-sizing: border-box; 
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            background-color: #333333;
+            color: #eeeeee;
+            margin: 0;
+            padding: 20px; /* ★余白を確保 */
+            min-height: 100vh;
+        }
+
+        #startOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #222;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        #startButton {
+            padding: 20px 40px;
+            font-size: 2em;
+            font-weight: bold;
+            color: #fff;
+            background-color: #4CAF50;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: transform 0.1s, background-color 0.3s;
+        }
+        #startButton:hover {
+            background-color: #45a049;
+            transform: scale(1.05);
+        }
+        #startButton:active {
+            transform: scale(0.95);
+        }
+        .start-note {
+            margin-top: 20px;
+            color: #aaa;
+            font-size: 1em;
+        }
+
+        #mainContent {
+            display: none; 
+        }
+
+        #gameTimeDisplay {
+            font-size: 5em;
+            font-weight: bold;
+            letter-spacing: 5px;
+            background-color: #2a2a2a;
+            padding: 30px 40px;
+            border-radius: 15px;
+            display: inline-block;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.5);
+            transition: color 0.5s ease;
+            margin-bottom: 20px; 
+            margin-top: 30px;
+        }
+        .label {
+            font-size: 1.4em;
+            color: #b0b0b0;
+            margin-bottom: 20px;
+        }
+        
+        .controls-container {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 20px;
+            flex-wrap: wrap;
+            max-width: 1200px; 
+            margin: 0 auto;
+        }
+
+        #syncToggleBtn {
+            padding: 12px 20px;
+            margin-bottom: 20px; 
+            background-color: #555;
+            color: white;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1em;
+            transition: background-color 0.3s;
+            display: block; 
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #syncToggleBtn:hover {
+            background-color: #666;
+        }
+        
+        #syncSettings {
+            display: none; 
+            width: 100%; 
+            margin-bottom: 20px; 
+            display: flex;
+            justify-content: center;
+        }
+        
+        .sync-controls, .alarm-controls {
+            padding: 20px;
+            background-color: #444;
+            border-radius: 8px;
+            width: calc(50% - 10px); 
+            min-width: 300px;
+            margin: 10px 0;
+        }
+        /* ★修正: 通知設定をアラーム設定と同じ幅にする */
+        .notification-controls {
+            padding: 20px;
+            background-color: #444;
+            border-radius: 8px;
+            width: calc(50% - 10px); 
+            min-width: 300px;
+            margin: 10px 0;
+        }
+        .notification-setting {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+
+        input[type="time"], button {
+            padding: 10px;
+            font-size: 1.1em;
+            border-radius: 5px;
+            border: none;
+            margin: 5px;
+        }
+        
+        .toggle-container {
+            position: relative;
+            display: inline-block;
+            width: 50px; 
+            height: 24px;
+            vertical-align: middle;
+        }
+        .toggle-container input[type="checkbox"] {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc; 
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        .toggle-container input:checked + .slider {
+            background-color: #4CAF50; 
+        }
+        .toggle-container input:checked + .slider:before {
+            transform: translateX(26px); 
+        }
+
+        .status-text {
+            font-weight: bold;
+            font-size: 1em;
+            width: 35px; 
+            text-align: center;
+            padding: 2px 0;
+        }
+        .status-on {
+            color: #4CAF50; 
+        }
+        .status-off {
+            color: #F44336; 
+        }
+        
+        .sync-controls button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        .add-alarm-btn {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            width: calc(50% - 7px);
+            margin-top: 15px;
+        }
+        #resetAlarmsBtn {
+            background-color: #777; 
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            width: calc(50% - 7px);
+            margin-top: 15px;
+        }
+        #testAlarmBtn {
+            background-color: #FFC107; 
+            color: #333;
+            cursor: pointer;
+            width: 100%; 
+            margin-top: 15px;
+        }
+        .delete-alarm-btn {
+            background-color: #f44336;
+            color: white;
+            cursor: pointer;
+            padding: 5px 10px;
+            font-size: 0.9em;
+            margin: 0; 
+        }
+
+        .alarm-slot {
+            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px;
+            border-radius: 5px;
+        }
+        .alarm-slot input[type="time"] { 
+            width: 100px; 
+            text-align: center;
+            margin-right: 10px;
+        }
+        .note { 
+            color: #FFA07A; 
+            margin-top: 20px; 
+            font-size: 0.9em; 
+        }
+
+        /* ★モバイルレイアウトの改善 */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px; 
+            }
+            #gameTimeDisplay {
+                font-size: 4em;
+            }
+            .controls-container {
+                flex-direction: column; 
+                align-items: center;
+                gap: 0;
+            }
+            
+            /* モバイルでは全て90%幅で縦積み */
+            .sync-controls, .alarm-controls, .notification-controls {
+                width: 90%; 
+                min-width: auto;
+                margin: 10px 0;
+            }
+
+            .alarm-slot input[type="time"] {
+                width: 110px; 
+            }
+            #syncSettings {
+                width: 100%;
+                justify-content: center;
+            }
+            .sync-controls {
+                 width: 90%;
+                 margin: 0;
+            }
+            .add-alarm-btn, #resetAlarmsBtn {
+                 width: 100%;
+                 margin: 5px 0;
+            }
+        }
+    </style>
+
+</head>
+<body>
+
+    <div id="startOverlay">
+        <button id="startButton" onclick="startClock()">時計を起動</button>
+        <p class="start-note">※ アラーム音を有効にするため、クリックして開始してください</p>
+    </div>
+
+    <div id="mainContent">
+        <div class="label">CARAVAN STORIES - GAME TIME</div>
+        <div id="gameTimeDisplay">--:--</div>
+
+        <button id="syncToggleBtn" onclick="toggleSyncSettings()">ゲーム内時間同期設定を表示</button>
+
+        <div class="controls-container">
+            <div id="syncSettings">
+                <div class="sync-controls">
+                    <div class="label" style="font-size:1.1em;">時計の基準同期</div>
+                    <input type="time" id="gameTimeInput" value="00:00" required>
+                    <button onclick="syncGameTime()">同期 & 保存</button>
+                    <p id="statusMessage" class="note"></p>
+                </div>
+            </div>
+
+            <div class="alarm-controls">
+                <div class="label" style="font-size:1.1em; margin-bottom:10px;">アラーム設定 (ゲーム内時間)</div>
+                <div id="alarmListContainer" style="margin-top: 15px;"></div>
+                <div style="display: flex; justify-content: space-between; gap: 10px;">
+                    <button class="add-alarm-btn" onclick="addAlarmSlot()">+ アラーム追加</button>
+                    <button id="resetAlarmsBtn" onclick="resetAlarms()">アラームリセット</button>
+                </div>
+            </div>
+            
+            <div class="notification-controls">
+                 <div class="label" style="font-size:1.1em; margin-bottom:10px;">デスクトップ/スマホ通知設定</div>
+                 <div class="notification-setting">
+                    <p id="notificationStatusText" class="status-text status-off">OFF</p>
+                    <label class="toggle-container">
+                        <input type="checkbox" id="notificationToggle" onchange="toggleNotification(this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                 </div>
+                 <p id="notificationNote" class="note" style="margin-top: 10px; font-size: 0.85em; color: #aaa;">
+                    ※ 通知を有効にするにはトグルをONにして許可を求めてください。
+                 </p>
+                 <button id="testAlarmBtn" onclick="testAlarmSound()">アラーム音・通知テスト</button>
+            </div>
+            </div>
+    </div>
+    
+    <script>
+        const SPEED_MULTIPLIER = 24;
+        const SECONDS_PER_DAY = 24 * 3600;
+        const LS_KEY_REAL_TIME = 'caravanSyncRealTimeMs';
+        const LS_KEY_GAME_TIME = 'caravanSyncGameTimeSeconds';
+        const LS_KEY_ALARMS = 'caravanAlarms';
+        const LS_KEY_NOTIFICATION_ENABLED = 'caravanNotificationEnabled';
+
+        const DEFAULT_ALARMS = [
+            { id: 1, targetTime: "00:00", enabled: false }, 
+            { id: 2, targetTime: "03:00", enabled: false }, 
+            { id: 3, targetTime: "18:00", enabled: false }  
+        ];
+
+        let syncRealTimeMs = 0;
+        let syncGameTimeSeconds = 0;
+        let alarms = []; 
+        let nextAlarmId = 1;
+        let isAlarming = false;
+        let alarmInterval = null; 
+        
+        let audioCtx;
+        let activeOscillator = null; 
+        let lastGameTotalSeconds = -1; 
+        let currentlyRingingAlarmId = null; 
+        let notificationEnabled = false; 
+        let savedSyncStatus = {}; // 同期ステータスを保持
+
+        // --- ヘルパー関数: HH:MM を総秒数に変換 ---
+        function timeToSeconds(timeStr) {
+            const parts = timeStr.split(':').map(Number);
+            if (parts.length === 2) {
+                return parts[0] * 3600 + parts[1] * 60;
+            }
+            return 0;
+        }
+
+        // ★★★ 時計起動 & 音声初期化 ★★★
+        function startClock() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            audioCtx = new AudioContext();
+
+            audioCtx.resume().then(() => {
+                playTone(880, 'sine', 0.1); 
+                goToMainScreen();
+            }).catch(e => {
+                console.error("Audio resume failed:", e);
+                goToMainScreen();
+                alert("音声再生の初期化に失敗しましたが、時計を起動します。");
+            });
+        }
+
+        function goToMainScreen() {
+            document.getElementById('startOverlay').style.display = 'none';
+            document.getElementById('mainContent').style.display = 'block';
+            initClockSystem();
+        }
+
+        // --- ビープ音生成関数 ---
+        function playTone(freq, type, duration) {
+            if (!audioCtx) return;
+            
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.type = type; 
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // ★★★ アラーム音を3回鳴らして自動停止する関数 ★★★
+        function playAlarmPattern() {
+            if (!audioCtx) return;
+            if (activeOscillator) return; 
+
+            const maxRepeats = 3; // 3回鳴らす
+            const toneDuration = 100; // 0.1秒鳴らす (ミリ秒)
+            const interval = 500; // 0.5秒間隔 (ミリ秒)
+            let currentRepeat = 0;
+            
+            function runPattern() {
+                if (currentRepeat < maxRepeats) {
+                    playTone(880, 'square', toneDuration / 1000); 
+                    currentRepeat++;
+                    activeOscillator = setTimeout(runPattern, interval);
+                } else {
+                    activeOscillator = null; 
+                    // テスト時以外はstopAlarmSound()を呼び出し。今回はテストなので不要。
+                }
+            }
+            activeOscillator = setTimeout(runPattern, 0);
+        }
+        
+        // ★★★ stopAlarmSound 関数 ★★★
+        function stopAlarmSound() {
+            // 1. 音を止め、アラーム状態を解除
+            if (activeOscillator) {
+                clearTimeout(activeOscillator); 
+                activeOscillator = null;
+            }
+            isAlarming = false;
+            
+            // 3. ステータスを正常に戻す (アラーム発動中メッセージのみクリア)
+            updateStatusMessageNormal();
+
+            // 4. タイマー再開を強制的に実行
+            if (alarmInterval === null) {
+                alarmInterval = setInterval(updateGameTime, 1000);
+                updateGameTime(); 
+            }
+        }
+        
+        // --- 初期化 ---
+        function initClockSystem() {
+            document.getElementById('syncSettings').style.display = 'none';
+            loadSyncData();
+            loadAlarmsData();
+            loadNotificationSetting();
+            if (alarmInterval === null) {
+                 alarmInterval = setInterval(updateGameTime, 1000); 
+            }
+            updateGameTime();
+        }
+
+        // ★★★ 通知機能ロジック ★★★
+        
+        function loadNotificationSetting() {
+            if (!("Notification" in window)) {
+                document.getElementById('notificationNote').textContent = "お使いのブラウザはデスクトップ/スマホ通知をサポートしていません。";
+                document.getElementById('notificationToggle').disabled = true;
+                return;
+            }
+
+            const saved = localStorage.getItem(LS_KEY_NOTIFICATION_ENABLED);
+            notificationEnabled = (saved === 'true');
+            
+            const toggle = document.getElementById('notificationToggle');
+            toggle.checked = notificationEnabled;
+            updateNotificationStatus(Notification.permission);
+        }
+
+        function updateNotificationStatus(permission) {
+            const statusElement = document.getElementById('notificationStatusText');
+            const noteElement = document.getElementById('notificationNote');
+            const toggle = document.getElementById('notificationToggle');
+            
+            if (permission === 'granted') {
+                toggle.disabled = false;
+                if (notificationEnabled) {
+                    statusElement.textContent = 'ON';
+                    statusElement.className = 'status-text status-on';
+                    noteElement.textContent = "通知は現在有効です。トグルでOFFにできます。";
+                } else {
+                    statusElement.textContent = 'OFF';
+                    statusElement.className = 'status-text status-off';
+                    noteElement.textContent = "通知はブラウザで許可されていますが、機能はOFFです。トグルをONにしてください。";
+                }
+            } else if (permission === 'denied') {
+                statusElement.textContent = 'DENIED';
+                statusElement.className = 'status-text status-off';
+                noteElement.textContent = "ブラウザ設定で通知がブロックされています。設定を解除してください。";
+                toggle.checked = false;
+                toggle.disabled = true;
+                notificationEnabled = false;
+                localStorage.setItem(LS_KEY_NOTIFICATION_ENABLED, 'false');
+            } else { // default (未許可)
+                statusElement.textContent = 'OFF';
+                statusElement.className = 'status-text status-off';
+                noteElement.textContent = "※ 通知を有効にするにはトグルをONにして許可を求めてください。";
+                toggle.disabled = false;
+            }
+        }
+
+        function requestNotificationPermission() {
+            return new Promise((resolve, reject) => {
+                Notification.requestPermission(function (permission) {
+                    resolve(permission);
+                });
+            });
+        }
+        
+        async function toggleNotification(isEnabled) {
+            if (isEnabled) {
+                if (Notification.permission !== 'granted') {
+                    const permission = await requestNotificationPermission();
+                    if (permission !== 'granted') {
+                        document.getElementById('notificationToggle').checked = false;
+                        notificationEnabled = false;
+                        localStorage.setItem(LS_KEY_NOTIFICATION_ENABLED, 'false');
+                        updateNotificationStatus(permission);
+                        return;
+                    }
+                }
+                notificationEnabled = true;
+                localStorage.setItem(LS_KEY_NOTIFICATION_ENABLED, 'true');
+            } else {
+                notificationEnabled = false;
+                localStorage.setItem(LS_KEY_NOTIFICATION_ENABLED, 'false');
+            }
+            updateNotificationStatus(Notification.permission);
+        }
+
+        function showDesktopNotification(title, body) {
+            if (notificationEnabled && Notification.permission === 'granted') {
+                const notification = new Notification(title, {
+                    body: body,
+                    icon: 'https://example.com/icon.png', // 任意のアイコンURLに変更
+                    requireInteraction: true 
+                });
+
+                notification.onclick = function(event) {
+                    event.preventDefault(); 
+                    window.focus();
+                    this.close();
+                }
+            }
+        }
+        // ★★★ 通知機能ロジック 終了 ★★★
+
+
+        // --- アラームリストの描画 ---
+        function renderAlarms() {
+            const container = document.getElementById('alarmListContainer');
+            container.innerHTML = alarms.map(alarm => `
+                <div class="alarm-slot" id="alarm-${alarm.id}" style="background-color: ${alarm.enabled ? '#3a3a3a' : '#555555'};">
+                    <div>
+                        <input type="time" value="${alarm.targetTime}" required onchange="updateAlarmTime(${alarm.id}, this.value)">
+                    </div>
+                    <div style="display:flex; align-items:center; gap: 15px;">
+                        
+                        <span class="status-text ${alarm.enabled ? 'status-on' : 'status-off'}">
+                            ${alarm.enabled ? 'ON' : 'OFF'}
+                        </span>
+                        
+                        <label class="toggle-container">
+                            <input type="checkbox" id="alarm-toggle-${alarm.id}" ${alarm.enabled ? 'checked' : ''} onchange="toggleAlarmEnabled(${alarm.id}, this.checked)" style="cursor: pointer;">
+                            <span class="slider"></span>
+                        </label>
+                        <button class="delete-alarm-btn" onclick="deleteAlarmSlot(${alarm.id})">削除</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function toggleSyncSettings() {
+            const settingsDiv = document.getElementById('syncSettings');
+            const toggleBtn = document.getElementById('syncToggleBtn');
+            if (settingsDiv.style.display === 'none') {
+                settingsDiv.style.display = 'flex'; 
+                toggleBtn.textContent = 'ゲーム内時間同期設定を非表示';
+            } else {
+                settingsDiv.style.display = 'none';
+                toggleBtn.textContent = 'ゲーム内時間同期設定を表示';
+            }
+        }
+
+        function loadSyncData() {
+            const savedRealTime = localStorage.getItem(LS_KEY_REAL_TIME);
+            const savedGameTime = localStorage.getItem(LS_KEY_GAME_TIME);
+            const statusElement = document.getElementById('statusMessage');
+
+            if (savedRealTime && savedGameTime) {
+                syncRealTimeMs = parseInt(savedRealTime, 10);
+                syncGameTimeSeconds = parseInt(savedGameTime, 10);
+                
+                savedSyncStatus.text = '自動同期が動作中です。';
+                savedSyncStatus.color = '#90EE90';
+                
+            } else {
+                syncRealTimeMs = new Date().getTime();
+                syncGameTimeSeconds = 0;
+
+                savedSyncStatus.text = '同期基準が未設定です。現在のゲーム内時刻を入力してください。';
+                savedSyncStatus.color = '#FFA07A';
+            }
+            
+            statusElement.textContent = savedSyncStatus.text;
+            statusElement.style.color = savedSyncStatus.color;
+
+            const initialHour = String(Math.floor(syncGameTimeSeconds / 3600)).padStart(2, '0');
+            const initialMinute = String(Math.floor((syncGameTimeSeconds % 3600) / 60)).padStart(2, '0');
+            document.getElementById('gameTimeInput').value = `${initialHour}:${initialMinute}`;
+        }
+        
+        function loadAlarmsData() {
+            const savedAlarms = localStorage.getItem(LS_KEY_ALARMS);
+            if (savedAlarms) {
+                try {
+                    alarms = JSON.parse(savedAlarms).map(alarm => ({
+                        id: alarm.id,
+                        targetTime: alarm.targetTime,
+                        enabled: alarm.enabled !== undefined ? alarm.enabled : true,
+                        seconds: timeToSeconds(alarm.targetTime)
+                    }));
+                    const maxId = alarms.reduce((max, alarm) => Math.max(max, alarm.id), 0);
+                    nextAlarmId = maxId + 1;
+                } catch (e) {
+                    alarms = [];
+                }
+            }
+            if (alarms.length === 0) {
+                resetAlarms(true);
+                return;
+            }
+            renderAlarms();
+        }
+
+        function syncGameTime() {
+            const inputElement = document.getElementById('gameTimeInput');
+            const timeStr = inputElement.value; 
+            
+            const parts = timeStr.match(/^(\d{2}):(\d{2})$/); 
+            
+            if (!parts) {
+                alert('入力形式が正しくありません (例: 16:35)。');
+                return;
+            }
+            
+            const inputHour = parseInt(parts[1], 10);
+            const inputMinute = parseInt(parts[2], 10);
+            
+            if (inputHour < 0 || inputHour > 23 || inputMinute < 0 || inputMinute > 59) {
+                alert('時刻の範囲が不正です (00:00～23:59)。');
+                return;
+            }
+
+            syncRealTimeMs = new Date().getTime();
+            syncGameTimeSeconds = (inputHour * 3600) + (inputMinute * 60);
+            localStorage.setItem(LS_KEY_REAL_TIME, syncRealTimeMs.toString());
+            localStorage.setItem(LS_KEY_GAME_TIME, syncGameTimeSeconds.toString());
+            
+            lastGameTotalSeconds = syncGameTimeSeconds - 1;
+
+            const statusElement = document.getElementById('statusMessage');
+            const formattedTime = `${String(inputHour).padStart(2, '0')}:${String(inputMinute).padStart(2, '0')}`;
+            
+            statusElement.textContent = `同期完了: ゲーム内 ${formattedTime} に設定され、基準が保存されました。`;
+            statusElement.style.color = '#90EE90'; 
+            
+            savedSyncStatus.text = '自動同期が動作中です。';
+            savedSyncStatus.color = '#90EE90';
+            
+             setTimeout(() => {
+                updateStatusMessageNormal();
+            }, 3000); 
+
+            updateGameTime(); 
+        }
+        
+        function saveAlarmsData() {
+            const alarmsToSave = alarms.map(alarm => ({
+                id: alarm.id,
+                targetTime: alarm.targetTime,
+                enabled: alarm.enabled
+            }));
+            localStorage.setItem(LS_KEY_ALARMS, JSON.stringify(alarmsToSave));
+        }
+        
+        function resetAlarms(isInitialLoad = false) {
+            if (!isInitialLoad && !confirm('アラーム設定を初期状態（0時、3時、18時。全て停止）に戻しますか？')) {
+                return;
+            }
+            alarms = DEFAULT_ALARMS.map((alarm, index) => ({
+                id: index + 1,
+                targetTime: alarm.targetTime,
+                enabled: alarm.enabled,
+                seconds: timeToSeconds(alarm.targetTime)
+            }));
+            nextAlarmId = DEFAULT_ALARMS.length + 1;
+            saveAlarmsData();
+            renderAlarms();
+        }
+
+        function addAlarmSlot() {
+            if (alarms.length >= 10) return;
+            const newAlarm = { 
+                id: nextAlarmId++, 
+                targetTime: "12:00", 
+                enabled: false
+            };
+            newAlarm.seconds = timeToSeconds(newAlarm.targetTime); 
+            alarms.push(newAlarm);
+            renderAlarms();
+            saveAlarmsData();
+        }
+
+        function deleteAlarmSlot(id) {
+            if (alarms.length <= 1) {
+                alert("アラームは最低1つ残す必要があります。");
+                return;
+            }
+            alarms = alarms.filter(alarm => alarm.id !== id);
+            renderAlarms();
+            saveAlarmsData();
+        }
+
+        function updateAlarmTime(id, newTime) {
+            const alarm = alarms.find(a => a.id === id);
+            if (alarm) {
+                alarm.targetTime = newTime;
+                alarm.seconds = timeToSeconds(newTime); 
+                saveAlarmsData();
+            }
+        }
+        
+        function toggleAlarmEnabled(id, isEnabled) {
+            const alarm = alarms.find(a => a.id === id);
+            if (alarm) {
+                alarm.enabled = isEnabled;
+                saveAlarmsData();
+                renderAlarms(); 
+                if (!isEnabled && isAlarming && currentlyRingingAlarmId === id) {
+                    stopAlarmSound(); 
+                }
+            }
+        }
+        
+        // ★★★ 修正箇所: testAlarmSoundからステータスメッセージ操作を削除 ★★★
+        function testAlarmSound() {
+            // 1. タイマーを停止し、アラーム状態をリセット
+            if (alarmInterval !== null) {
+                clearInterval(alarmInterval);
+                alarmInterval = null;
+            }
+            if (isAlarming) stopAlarmSound();
+            
+            // 2. 3回鳴動させる本ロジックを呼び出す
+            playAlarmPattern(); 
+            
+            // 3. 通知もテスト
+            showDesktopNotification("アラームテスト", "アラーム音・通知機能が動作しています。");
+
+            // 4. テスト音の再生が完全に終わる時間（約1.5秒）を待って、時計を再開する
+            setTimeout(() => {
+                if (!isAlarming) {
+                    // ステータスメッセージ操作は行わない
+                    if (alarmInterval === null) {
+                        alarmInterval = setInterval(updateGameTime, 1000);
+                    }
+                }
+            }, 1500); 
+        }
+        // ★★★ 修正箇所 終了 ★★★
+        
+        function triggerAlarm(alarmObject) {
+            isAlarming = true;
+            currentlyRingingAlarmId = alarmObject.id; 
+            
+            if (alarmInterval !== null) {
+                clearInterval(alarmInterval);
+                alarmInterval = null;
+            }
+
+            const statusElement = document.getElementById('statusMessage');
+            statusElement.textContent = `🚨 アラーム発動中: ${alarmObject.targetTime} 🚨 (3回鳴ったら自動停止)`;
+            statusElement.style.color = '#FF0000';
+
+            showDesktopNotification(
+                "🚨 キャラスト アラーム発動！", 
+                `ゲーム内時刻が ${alarmObject.targetTime} になりました。`
+            );
+
+            playAlarmPattern(); 
+        }
+
+        function updateStatusMessageNormal() {
+             const statusElement = document.getElementById('statusMessage');
+             
+             statusElement.textContent = savedSyncStatus.text; 
+             statusElement.style.color = savedSyncStatus.color;
+        }
+
+        // ★★★ updateGameTime 関数（連続鳴動防止ロジック） ★★★
+        function updateGameTime() {
+            if (isAlarming && alarmInterval === null) return;
+            
+            const displayElement = document.getElementById('gameTimeDisplay');
+            if (syncRealTimeMs === 0) {
+                displayElement.textContent = '--:--'; 
+                return;
+            }
+
+            const now = new Date().getTime();
+            const elapsedRealTimeMs = now - syncRealTimeMs;
+            const elapsedRealSeconds = elapsedRealTimeMs / 1000;
+            const elapsedGameSeconds = elapsedRealSeconds * SPEED_MULTIPLIER;
+            let totalGameSeconds = syncGameTimeSeconds + elapsedGameSeconds;
+
+            totalGameSeconds %= SECONDS_PER_DAY; 
+            if (totalGameSeconds < 0) totalGameSeconds += SECONDS_PER_DAY;
+
+            const gameHour = Math.floor(totalGameSeconds / 3600);
+            const remainingSeconds = totalGameSeconds % 3600;
+            const gameMinute = Math.floor(remainingSeconds / 60);
+            
+            const formattedHour = String(gameHour).padStart(2, '0');
+            const formattedMinute = String(gameMinute).padStart(2, '0');
+            const currentTimeStr = `${formattedHour}:${formattedMinute}`;
+            displayElement.textContent = currentTimeStr;
+            
+            if (gameHour >= 6 && gameHour < 18) {
+                displayElement.style.color = '#FFD700';
+                displayElement.style.textShadow = '0 0 10px rgba(255, 215, 0, 0.8)';
+            } else {
+                displayElement.style.color = '#87CEFA';
+                displayElement.style.textShadow = '0 0 10px rgba(135, 206, 250, 0.8)';
+            }
+            
+            const currentGameTotalSeconds = Math.floor(totalGameSeconds); 
+
+            if (!isAlarming && lastGameTotalSeconds !== -1) { 
+                for (const alarm of alarms) {
+                    if (!alarm.enabled) continue; 
+
+                    const alarmSeconds = alarm.seconds;
+
+                    // アラーム通過判定
+                    const crossedCurrent = currentGameTotalSeconds >= alarmSeconds;
+                    const crossedLast = lastGameTotalSeconds < alarmSeconds;
+                    
+                    // 00:00をまたぐケース
+                    const isMidnightCrossing = (alarmSeconds === 0) && (lastGameTotalSeconds > SECONDS_PER_DAY - 60) && (currentGameTotalSeconds === 0);
+
+                    if ((crossedCurrent && crossedLast) || isMidnightCrossing) {
+                        
+                        if (alarm.id !== currentlyRingingAlarmId) {
+                            triggerAlarm(alarm);
+                            break; 
+                        }
+                    }
+                }
+            }
+            
+            lastGameTotalSeconds = currentGameTotalSeconds;
+            
+            if (currentlyRingingAlarmId !== null) {
+                 const ringingAlarm = alarms.find(a => a.id === currentlyRingingAlarmId);
+                 if (ringingAlarm && currentGameTotalSeconds > ringingAlarm.seconds) {
+                    currentlyRingingAlarmId = null;
+                 }
+            }
+        }
+        // ★★★ 修正箇所 終了 ★★★
+        
+        // グローバルスコープに公開
+        window.startClock = startClock;
+        window.syncGameTime = syncGameTime;
+        window.addAlarmSlot = addAlarmSlot;
+        window.deleteAlarmSlot = deleteAlarmSlot;
+        window.updateAlarmTime = updateAlarmTime;
+        window.toggleSyncSettings = toggleSyncSettings;
+        window.toggleAlarmEnabled = toggleAlarmEnabled;
+        window.resetAlarms = resetAlarms; 
+        window.testAlarmSound = testAlarmSound; 
+        window.stopAlarmSound = stopAlarmSound; 
+        window.triggerAlarm = triggerAlarm;
+        window.timeToSeconds = timeToSeconds; 
+        window.playAlarmPattern = playAlarmPattern; 
+        window.toggleNotification = toggleNotification; 
+    </script> 
+</body>
+</html>
