@@ -371,6 +371,7 @@
         let nextAlarmId = 1;
         let isAlarming = false;
         let alarmInterval = null; 
+        let alarmTriggerTime = 0; 
 
         let audioCtx;
         let activeOscillator = null; 
@@ -429,7 +430,7 @@
             osc.stop(audioCtx.currentTime + duration);
         }
 
-        // ★★★ 修正: アラーム音を3回鳴らして自動停止する関数 (状態リセット処理を削除) ★★★
+        // ★★★ アラーム音を3回鳴らして自動停止する関数 ★★★
         function playAlarmPattern() {
             if (!audioCtx) return;
             
@@ -449,14 +450,13 @@
                     activeOscillator = setTimeout(runPattern, interval);
                 } else {
                     activeOscillator = null; 
-                    // ★修正点: ここにあった状態リセット処理を削除 (resetAlarmStateAfterDelayに任せる)
                 }
             }
             // パターン開始
             runPattern();
         }
         
-        // ★★★ 修正: stopAlarmSound 関数 (タイマー操作を削除) ★★★
+        // ★★★ stopAlarmSound 関数 ★★★
         function stopAlarmSound() {
             // 1. 音を止める
             if (activeOscillator) {
@@ -485,7 +485,7 @@
             updateGameTime();
         }
 
-        // ★★★ 通知機能ロジック (省略) ★★★
+        // ★★★ 通知機能ロジック (変更なし) ★★★
         
         function loadNotificationSetting() {
             if (!("Notification" in window)) {
@@ -581,7 +581,7 @@
         // ★★★ 通知機能ロジック 終了 ★★★
 
 
-        // --- アラームリストの描画 ---
+        // --- アラームリストの描画 (変更なし) ---
         function renderAlarms() {
             const container = document.getElementById('alarmListContainer');
             container.innerHTML = alarms.map(alarm => `
@@ -778,7 +778,7 @@
             }
         }
         
-        // ★★★ 修正: testAlarmSound - 通知処理を音より先に実行して、連動性を高める ★★★
+        // ★★★ testAlarmSound - 通知処理を音より先に実行して、連動性を高める ★★★
         function testAlarmSound() {
             // 既存のトーンパターンを停止
             if (activeOscillator) clearTimeout(activeOscillator); 
@@ -791,27 +791,15 @@
             playAlarmPattern(); 
         }
         
-        // ★★★ 新規追加: アラーム状態を強制的にリセットする関数 ★★★
-        function resetAlarmStateAfterDelay() {
-             // 5秒後にリセットを実行
-             setTimeout(() => {
-                // isAlarmingがまだtrueならリセット
-                if (isAlarming) {
-                    isAlarming = false;
-                    currentlyRingingAlarmId = null;
-                    updateStatusMessageNormal();
-                }
-            }, 5000); 
-        }
-        
-        // ★★★ 修正: triggerAlarm (状態リセットタイマーを追加) ★★★
-        function triggerAlarm(alarmObject) {
+        // ★★★ triggerAlarm (変更なし) ★★★
+        function triggerAlarm(alarmObject, currentGameTotalSeconds) {
             // アラーム発動の検知
             isAlarming = true;
             currentlyRingingAlarmId = alarmObject.id; 
+            alarmTriggerTime = currentGameTotalSeconds; // 発動した時刻を記録
             
             const statusElement = document.getElementById('statusMessage');
-            statusElement.textContent = `🚨 アラーム発動中: ${alarmObject.targetTime} 🚨 (ステータスは5秒後に自動解除)`;
+            statusElement.textContent = `🚨 アラーム発動中: ${alarmObject.targetTime} 🚨`;
             statusElement.style.color = '#FF0000'; // ステータスを赤色にする
 
             // 音と通知の試行 (Androidではブロックされる可能性が高い)
@@ -821,9 +809,6 @@
             );
 
             playAlarmPattern(); 
-            
-            // ★★★ 修正点: 強制リセットタイマーをスケジュール ★★★
-            resetAlarmStateAfterDelay();
         }
 
         function updateStatusMessageNormal() {
@@ -833,7 +818,7 @@
              statusElement.style.color = savedSyncStatus.color;
         }
 
-        // ★★★ updateGameTime 関数 (時計は常に動き続ける) ★★★
+        // ★★★ updateGameTime 関数 (00:00 アラーム検知ロジックを修正) ★★★
         function updateGameTime() {
 
             const displayElement = document.getElementById('gameTimeDisplay');
@@ -870,21 +855,48 @@
             
             const currentGameTotalSeconds = Math.floor(totalGameSeconds); 
 
+            // ★★★ アラーム強制リセットロジック (変更なし) ★★★
+            if (isAlarming) {
+                // 発動からゲーム内時間で5秒以上経過したら強制リセット
+                const elapsedSinceTrigger = currentGameTotalSeconds - alarmTriggerTime;
+                
+                let reset = elapsedSinceTrigger >= 5;
+                if (elapsedSinceTrigger < 0) {
+                     // 1日を跨いだ場合
+                     const correctedElapsed = elapsedSinceTrigger + SECONDS_PER_DAY;
+                     if (correctedElapsed >= 5) reset = true;
+                }
+                
+                if (reset) {
+                    stopAlarmSound(); // 音声を停止し、isAlarmingフラグをリセットする
+                }
+            }
+
+
             if (!isAlarming && lastGameTotalSeconds !== -1) { 
                 for (const alarm of alarms) {
                     if (!alarm.enabled) continue; 
 
                     const alarmSeconds = alarm.seconds;
+                    let crossed = false; // アラームをまたいだかどうかのフラグ
 
-                    const crossedCurrent = currentGameTotalSeconds >= alarmSeconds;
-                    const crossedLast = lastGameTotalSeconds < alarmSeconds;
+                    // 1. 標準的な時刻のまたぎチェック (00:01以降)
+                    // 前回時刻がアラーム前、今回時刻がアラーム時刻以上
+                    crossed = (currentGameTotalSeconds >= alarmSeconds) && (lastGameTotalSeconds < alarmSeconds);
+
+                    // 2. ★修正: 00:00 の時刻またぎチェック (アラーム秒数が0の場合)
+                    if (alarmSeconds === 0) {
+                        // 前回時刻が23:59付近（86340秒以降）であり、かつ今回時刻が00:00付近（60秒未満）であれば、夜をまたいだ
+                        const NEAR_MIDNIGHT = SECONDS_PER_DAY - 60;
+                        if (lastGameTotalSeconds > NEAR_MIDNIGHT && currentGameTotalSeconds < 60) {
+                            crossed = true;
+                        }
+                        // 00:00が同期時刻で初期化された場合も「crossed」は既にtrueになっているはず
+                    }
                     
-                    const isMidnightCrossing = (alarmSeconds === 0) && (lastGameTotalSeconds > SECONDS_PER_DAY - 60) && (currentGameTotalSeconds === 0);
-
-                    if ((crossedCurrent && crossedLast) || isMidnightCrossing) {
-                        
+                    if (crossed) {
                         if (alarm.id !== currentlyRingingAlarmId) {
-                            triggerAlarm(alarm);
+                            triggerAlarm(alarm, currentGameTotalSeconds);
                             break; 
                         }
                     }
@@ -917,7 +929,6 @@
         window.timeToSeconds = timeToSeconds; 
         window.playAlarmPattern = playAlarmPattern; 
         window.toggleNotification = toggleNotification; 
-        window.resetAlarmStateAfterDelay = resetAlarmStateAfterDelay; // 新規公開
     </script> 
 </body>
 </html>
